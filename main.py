@@ -7,7 +7,7 @@ import os
 from datetime import datetime
 import pytz
 
-# Flask server to keep Replit bot alive
+# Flask server to keep Railway bot alive
 app = Flask('')
 
 @app.route('/')
@@ -82,6 +82,26 @@ async def setcrown(ctx, role: discord.Role):
     crown_role_id = role.id
     await ctx.send(f"👑 Crown role set to **{role.name}**.")
 
+@bot.command()
+async def sobreset(ctx):
+    if ctx.author.id != OWNER_ID:
+        return await ctx.send("🚫 You don't have permission to reset sobs.")
+
+    # Remove crown role from current champ (if any)
+    if crown_role_id and last_champ:
+        guild = ctx.guild
+        role = guild.get_role(crown_role_id)
+        member = guild.get_member(last_champ)
+        if role and member and role in member.roles:
+            await member.remove_roles(role)
+            print(f"👑 Removed crown from {member.display_name}")
+    
+    # Reset sob counts and last champ
+    sob_counts.clear()
+    globals()['last_champ'] = None
+    await ctx.send("😭 All sob counts have been reset and the crown role has been cleared.")
+    print("🔁 Manual sob reset triggered by owner.")
+
 @tasks.loop(minutes=1)
 async def weekly_reset():
     now = datetime.now(eastern)
@@ -89,6 +109,7 @@ async def weekly_reset():
         print("Running weekly sob reset and crown transfer.")
         await assign_sob_king()
         sob_counts.clear()
+        globals()['last_champ'] = None
 
 async def assign_sob_king():
     global last_champ
