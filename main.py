@@ -51,17 +51,10 @@ async def on_reaction_add(reaction, user):
         message_author = reaction.message.author
 
         if message_author.id == user.id:
-            # Self-react attempt
+            # Self-react attempt — silently ignored
             print(f"⚠️ {user.name} tried to self-sob in #{reaction.message.channel.name}")
-            await reaction.message.channel.send(f"⚠️ {user.mention} tried to sob-react their own message. Nice try.")
             return
 
-        if not message_author.bot:
-            sob_counts[message_author.id] += 1
-    if user.bot:
-        return
-    if str(reaction.emoji) == "😭":
-        message_author = reaction.message.author
         if not message_author.bot:
             sob_counts[message_author.id] += 1
 
