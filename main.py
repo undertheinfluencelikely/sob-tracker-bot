@@ -1,23 +1,45 @@
+from flask import Flask
+from threading import Thread
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
+from collections import defaultdict
 from datetime import datetime, timedelta
 import os
+import pytz
 import re
 import random
 
-# === CONFIG ===
-OWNER_ID = 1217191811559329792  # Your ID
-TOKEN = os.environ['TOKEN']     # Or replace with a raw string if testing
+# Flask server to keep Railway bot alive
+app = Flask('')
 
-# === BOT SETUP ===
+@app.route('/')
+def home():
+    return "Bot is alive!"
+
+def run():
+    app.run(host='0.0.0.0', port=8080)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
+
+# Globals
+OWNER_ID = 1217191811559329792
+crown_role_id = None
+sob_counts = defaultdict(int)
+last_champ = None
+uwu_targets = {}
+eastern = pytz.timezone("America/New_York")
+
+# Intents and bot setup
 intents = discord.Intents.default()
-intents.message_content = True
 intents.members = True
+intents.reactions = True
+intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
-uwu_targets = {}  # user_id: expiration time or None
 
-# === UWUIFY FUNCTION ===
+# UwUify Function
 def ultra_uwuify(text):
     faces = ['👉👈', '>w<', '🥺', '😳', '💦', '💖', 'rawr~', 'uwu', 'X3', '~nyaa']
     text = re.sub(r'[rl]', 'w', text)
@@ -29,10 +51,23 @@ def ultra_uwuify(text):
     emoji_spam = ' ' + ' '.join(random.sample(faces, 3))
     return f"*{text}*{emoji_spam}"
 
-# === EVENTS ===
+# Events
 @bot.event
 async def on_ready():
     print(f"✅ Logged in as {bot.user}")
+    weekly_reset.start()
+
+@bot.event
+async def on_reaction_add(reaction, user):
+    if user.bot:
+        return
+    if str(reaction.emoji) == "😭":
+        author = reaction.message.author
+        if author.id == user.id:
+            print(f"⚠️ {user.name} tried to self-sob in #{reaction.message.channel.name}")
+            return
+        if not author.bot:
+            sob_counts[author.id] += 1
 
 @bot.event
 async def on_message(message):
@@ -40,22 +75,65 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    print(f"[msg] {message.author}: {message.content}")
-
     if message.author.id in uwu_targets:
         expire_time = uwu_targets[message.author.id]
         if expire_time and datetime.utcnow() > expire_time:
+            print(f"🕒 uwu expired for {message.author}")
             del uwu_targets[message.author.id]
-            print(f"[uwu] expired for {message.author}")
             return
         cursed = ultra_uwuify(message.content)
         try:
             await message.channel.send(cursed)
-            print(f"[uwu] mocked {message.author}")
+            print(f"🧸 Mocked {message.author.display_name}")
         except Exception as e:
-            print(f"[error] uwu response failed: {e}")
+            print(f"❌ Error mocking {message.author}: {e}")
 
-# === COMMANDS ===
+# Commands
+@bot.command()
+async def sobboard(ctx):
+    sorted_counts = sorted(sob_counts.items(), key=lambda x: x[1], reverse=True)
+    leaderboard = ""
+    for i, (user_id, count) in enumerate(sorted_counts[:10], start=1):
+        user = await bot.fetch_user(user_id)
+        leaderboard += f"{i}. {user.name}: {count} sobs\n"
+    await ctx.send(f"😭 **Sob Leaderboard**\n{leaderboard or 'No sobs yet!'}")
+
+@bot.command()
+async def sobs(ctx, member: discord.Member = None):
+    member = member or ctx.author
+    count = sob_counts.get(member.id, 0)
+    await ctx.send(f"😭 **{member.display_name}** has received {count} sobs.")
+
+@bot.command()
+async def crown(ctx):
+    if ctx.author.id != OWNER_ID:
+        return
+    await assign_sob_king()
+    await ctx.send("👑 Crown assigned based on current sobs.")
+
+@bot.command()
+async def setcrown(ctx, role: discord.Role):
+    if ctx.author.id != OWNER_ID:
+        return
+    global crown_role_id
+    crown_role_id = role.id
+    await ctx.send(f"👑 Crown role set to **{role.name}**.")
+
+@bot.command()
+async def sobreset(ctx):
+    if ctx.author.id != OWNER_ID:
+        return await ctx.send("🚫 You don't have permission to reset sobs.")
+    if crown_role_id and last_champ:
+        guild = ctx.guild
+        role = guild.get_role(crown_role_id)
+        member = guild.get_member(last_champ)
+        if role and member and role in member.roles:
+            await member.remove_roles(role)
+            print(f"👑 Removed crown from {member.display_name}")
+    sob_counts.clear()
+    globals()['last_champ'] = None
+    await ctx.send("😭 All sob counts have been reset and the crown role has been cleared.")
+
 @bot.command()
 async def uwu(ctx, member: discord.Member, duration: str = None):
     if ctx.author.id != OWNER_ID:
@@ -69,7 +147,7 @@ async def uwu(ctx, member: discord.Member, duration: str = None):
                      'h': timedelta(hours=val), 'd': timedelta(days=val)}
             expire = datetime.utcnow() + delta[unit]
     uwu_targets[member.id] = expire
-    print(f"[cmd] {member} added to uwu_targets until {expire}")
+    print(f"🔒 Added {member.display_name} to uwu_targets until {expire}")
     await ctx.message.delete()
 
 @bot.command()
@@ -78,8 +156,45 @@ async def unuwu(ctx, member: discord.Member):
         return
     if member.id in uwu_targets:
         del uwu_targets[member.id]
-        print(f"[cmd] {member} removed from uwu_targets")
+        print(f"🔓 Removed {member.display_name} from uwu_targets")
     await ctx.message.delete()
 
-# === RUN ===
+# Weekly Reset Task
+@tasks.loop(minutes=1)
+async def weekly_reset():
+    now = datetime.now(eastern)
+    if now.weekday() == 6 and now.hour == 0 and now.minute == 0:
+        print("🕛 Weekly sob reset running.")
+        await assign_sob_king()
+        sob_counts.clear()
+        globals()['last_champ'] = None
+
+async def assign_sob_king():
+    global last_champ
+    guild = bot.guilds[0]
+    if not crown_role_id:
+        print("⚠️ Crown role not set.")
+        return
+    role = guild.get_role(crown_role_id)
+    if not role:
+        print("⚠️ Crown role invalid or deleted.")
+        return
+    if not sob_counts:
+        print("🫥 No sobs this week.")
+        return
+    top_user_id = max(sob_counts, key=sob_counts.get)
+    member = guild.get_member(top_user_id)
+    if member:
+        await member.add_roles(role)
+        print(f"👑 Gave Sob King to {member.display_name}")
+    if last_champ and last_champ != top_user_id:
+        old_member = guild.get_member(last_champ)
+        if old_member:
+            await old_member.remove_roles(role)
+            print(f"👑 Removed Sob King from {old_member.display_name}")
+    last_champ = top_user_id
+
+# Launch
+keep_alive()
+TOKEN = os.environ['TOKEN']
 bot.run(TOKEN)
