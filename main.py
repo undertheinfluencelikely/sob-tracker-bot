@@ -1,4 +1,3 @@
-
 from flask import Flask
 from threading import Thread
 import discord
@@ -197,6 +196,25 @@ async def unuwu(ctx, member: discord.Member):
         del uwu_targets[member.id]
         save_data()
     await ctx.message.delete()
+
+@bot.command()
+async def purgesobs(ctx):
+    if ctx.author.id != OWNER_ID:
+        return await ctx.send("🚫 You don’t have permission to run this.")
+    removed = 0
+    ids_to_remove = []
+    for user_id in list(sob_counts.keys()):
+        try:
+            await bot.fetch_user(user_id)
+        except discord.NotFound:
+            ids_to_remove.append(user_id)
+        except:
+            continue
+    for uid in ids_to_remove:
+        del sob_counts[uid]
+        removed += 1
+    save_data()
+    await ctx.send(f"🧹 Purged {removed} invalid users from sob memory.")
 
 # === Crown Logic ===
 @tasks.loop(minutes=1)
