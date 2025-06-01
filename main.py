@@ -138,7 +138,7 @@ async def sobreset(ctx):
 
 @bot.command()
 async def uwu(ctx, member: discord.Member, duration: str = None):
-    if ctx.author.id != OWNER_ID or not isinstance(ctx.channel, discord.DMChannel):
+    if ctx.author.id != OWNER_ID:
         return await ctx.message.delete()
     expire = None
     if duration:
@@ -153,7 +153,7 @@ async def uwu(ctx, member: discord.Member, duration: str = None):
 
 @bot.command()
 async def unuwu(ctx, member: discord.Member):
-    if ctx.author.id != OWNER_ID or not isinstance(ctx.channel, discord.DMChannel):
+    if ctx.author.id != OWNER_ID:
         return await ctx.message.delete()
     if member.id in uwu_targets:
         del uwu_targets[member.id]
