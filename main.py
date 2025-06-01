@@ -9,7 +9,7 @@ import pytz
 import re
 import random
 
-# Flask server to keep Railway bot alive
+# Keep bot alive on Railway
 app = Flask('')
 
 @app.route('/')
@@ -23,15 +23,15 @@ def keep_alive():
     t = Thread(target=run)
     t.start()
 
-# Globals
+# === GLOBALS ===
 OWNER_ID = 1217191811559329792
 crown_role_id = None
 sob_counts = defaultdict(int)
 last_champ = None
+uwu_targets = {}  # user_id: expiration datetime or None
 eastern = pytz.timezone("America/New_York")
-uwu_targets = {}  # user_id: expiration_time or None
 
-# Intents and bot setup
+# === DISCORD SETUP ===
 intents = discord.Intents.default()
 intents.members = True
 intents.reactions = True
@@ -39,19 +39,7 @@ intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# UwUify Function
-def ultra_uwuify(text):
-    faces = ['👉👈', '>w<', '🥺', '😳', '💦', '💖', 'rawr~', 'uwu', 'X3', '~nyaa']
-    text = re.sub(r'[rl]', 'w', text)
-    text = re.sub(r'[RL]', 'W', text)
-    text = re.sub(r'n([aeiou])', r'ny\1', text)
-    text = re.sub(r'N([aeiouAEIOU])', r'Ny\1', text)
-    stutter = lambda w: w[0] + '-' + w if random.random() < 0.2 else w
-    text = ' '.join([stutter(word) for word in text.split()])
-    emoji_spam = ' ' + ' '.join(random.sample(faces, 3))
-    return f"*{text}*{emoji_spam}"
-
-# Events
+# === EVENTS ===
 @bot.event
 async def on_ready():
     print(f"✅ Logged in as {bot.user}")
@@ -61,25 +49,22 @@ async def on_ready():
 async def on_reaction_add(reaction, user):
     if user.bot:
         return
-
     if str(reaction.emoji) == "😭":
-        message_author = reaction.message.author
-        if message_author.id == user.id:
+        author = reaction.message.author
+        if author.id == user.id:
             print(f"⚠️ {user.name} tried to self-sob in #{reaction.message.channel.name}")
             return
-        if not message_author.bot:
-            sob_counts[message_author.id] += 1
+        if not author.bot:
+            sob_counts[author.id] += 1
 
 @bot.event
 async def on_message(message):
     await bot.process_commands(message)
-
     if message.author.bot:
         return
-
     if message.author.id in uwu_targets:
-        expire_time = uwu_targets[message.author.id]
-        if expire_time and datetime.utcnow() > expire_time:
+        expiry = uwu_targets[message.author.id]
+        if expiry and datetime.utcnow() > expiry:
             del uwu_targets[message.author.id]
             return
         cursed = ultra_uwuify(message.content)
@@ -88,7 +73,7 @@ async def on_message(message):
         except:
             pass
 
-# Commands
+# === COMMANDS ===
 @bot.command()
 async def sobboard(ctx):
     sorted_counts = sorted(sob_counts.items(), key=lambda x: x[1], reverse=True)
@@ -100,8 +85,7 @@ async def sobboard(ctx):
 
 @bot.command()
 async def sobs(ctx, member: discord.Member = None):
-    if member is None:
-        member = ctx.author
+    member = member or ctx.author
     count = sob_counts.get(member.id, 0)
     await ctx.send(f"😭 **{member.display_name}** has received {count} sobs.")
 
@@ -139,7 +123,7 @@ async def sobreset(ctx):
 @bot.command()
 async def uwu(ctx, member: discord.Member, duration: str = None):
     if ctx.author.id != OWNER_ID:
-        return await ctx.message.delete()
+        return
     expire = None
     if duration:
         match = re.match(r'(\d+)([smhd])', duration.lower())
@@ -154,12 +138,24 @@ async def uwu(ctx, member: discord.Member, duration: str = None):
 @bot.command()
 async def unuwu(ctx, member: discord.Member):
     if ctx.author.id != OWNER_ID:
-        return await ctx.message.delete()
+        return
     if member.id in uwu_targets:
         del uwu_targets[member.id]
     await ctx.message.delete()
 
-# Sob King Assignment
+# === UWUIFY FUNCTION ===
+def ultra_uwuify(text):
+    faces = ['👉👈', '>w<', '🥺', '😳', '💦', '💖', 'rawr~', 'uwu', 'X3', '~nyaa']
+    text = re.sub(r'[rl]', 'w', text)
+    text = re.sub(r'[RL]', 'W', text)
+    text = re.sub(r'n([aeiou])', r'ny\1', text)
+    text = re.sub(r'N([aeiouAEIOU])', r'Ny\1', text)
+    stutter = lambda w: w[0] + '-' + w if random.random() < 0.2 else w
+    text = ' '.join([stutter(word) for word in text.split()])
+    emoji_spam = ' ' + ' '.join(random.sample(faces, 3))
+    return f"*{text}*{emoji_spam}"
+
+# === SOB KING ROTATION ===
 @tasks.loop(minutes=1)
 async def weekly_reset():
     now = datetime.now(eastern)
@@ -194,7 +190,7 @@ async def assign_sob_king():
             print(f"Removed Sob King from {old_member.display_name}")
     last_champ = top_user_id
 
-# Keep alive + run bot
+# === RUN ===
 keep_alive()
 TOKEN = os.environ['TOKEN']
 bot.run(TOKEN)
