@@ -24,7 +24,7 @@ def keep_alive():
     t.start()
 
 # Globals
-OWNER_ID = 1217191811559329792
+OWNER_ID = 1276728546840150016
 crown_role_id = None
 sob_counts = defaultdict(int)
 last_champ = None
