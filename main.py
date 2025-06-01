@@ -1,3 +1,4 @@
+
 from flask import Flask
 from threading import Thread
 import discord
@@ -8,6 +9,7 @@ import os
 import pytz
 import re
 import random
+import json
 
 # === Keepalive Server (for Railway) ===
 app = Flask(__name__)
@@ -24,12 +26,35 @@ def keep_alive():
 
 # === Config ===
 OWNER_ID = 1276728546840150016
+DATA_FILE = "memory.json"
 crown_role_id = None
 sob_counts = defaultdict(int)
 last_champ = None
 uwu_targets = {}
 eastern = pytz.timezone("America/New_York")
 
+# === Persistence ===
+def save_data():
+    with open(DATA_FILE, "w") as f:
+        json.dump({
+            "sob_counts": dict(sob_counts),
+            "last_champ": last_champ,
+            "uwu_targets": {str(k): v.isoformat() if v else None for k, v in uwu_targets.items()}
+        }, f)
+
+def load_data():
+    global last_champ
+    try:
+        with open(DATA_FILE, "r") as f:
+            data = json.load(f)
+            sob_counts.update({int(k): v for k, v in data.get("sob_counts", {}).items()})
+            last_champ = data.get("last_champ")
+            for uid, ts in data.get("uwu_targets", {}).items():
+                uwu_targets[int(uid)] = datetime.fromisoformat(ts) if ts else None
+    except FileNotFoundError:
+        pass
+
+# === Discord Setup ===
 intents = discord.Intents.default()
 intents.members = True
 intents.reactions = True
@@ -41,8 +66,8 @@ def ultra_uwuify(text):
     faces = ['👉👈', '>w<', '🥺', '😳', '💦', '💖', 'rawr~', 'uwu', 'X3', '~nyaa']
     text = re.sub(r'[rl]', 'w', text)
     text = re.sub(r'[RL]', 'W', text)
-    text = re.sub(r'n([aeiou])', r'ny\\1', text)
-    text = re.sub(r'N([aeiouAEIOU])', r'Ny\\1', text)
+    text = re.sub(r'n([aeiou])', r'ny\1', text)
+    text = re.sub(r'N([aeiouAEIOU])', r'Ny\1', text)
     stutter = lambda w: w[0] + '-' + w if random.random() < 0.2 else w
     text = ' '.join([stutter(word) for word in text.split()])
     emoji_spam = ' ' + ' '.join(random.sample(faces, 3))
@@ -52,6 +77,7 @@ def ultra_uwuify(text):
 @bot.event
 async def on_ready():
     print(f"✅ Logged in as {bot.user}")
+    load_data()
     weekly_reset.start()
 
 @bot.event
@@ -64,19 +90,19 @@ async def on_reaction_add(reaction, user):
             print(f"⚠️ {user.name} tried to self-sob in #{reaction.message.channel.name}")
             return
         sob_counts[author.id] += 1
+        save_data()
 
 @bot.event
 async def on_message(message):
     await bot.process_commands(message)
     if message.author.bot:
         return
-
     if message.author.id in uwu_targets:
         expire = uwu_targets[message.author.id]
         if expire and datetime.utcnow() > expire:
             del uwu_targets[message.author.id]
+            save_data()
             return
-
         cursed = ultra_uwuify(message.content)
         try:
             await message.delete()
@@ -105,8 +131,8 @@ async def sobboard(ctx):
             name = user.name
         except:
             name = f"Unknown User ({user_id})"
-        leaderboard += f"{i}. {name}: {count} sobs\\n"
-    await ctx.send(f"😭 **Sob Leaderboard**\\n{leaderboard}")
+        leaderboard += f"{i}. {name}: {count} sobs\n"
+    await ctx.send(f"😭 **Sob Leaderboard**\n{leaderboard}")
 
 @bot.command()
 async def sobs(ctx, member: discord.Member = None):
@@ -120,6 +146,7 @@ async def crown(ctx):
         return
     await assign_sob_king()
     await ctx.send("👑 Crown assigned based on current sobs.")
+    save_data()
 
 @bot.command()
 async def setcrown(ctx, role: discord.Role):
@@ -142,6 +169,7 @@ async def sobreset(ctx):
     sob_counts.clear()
     globals()['last_champ'] = None
     await ctx.send("😭 Sob counts and crown cleared.")
+    save_data()
 
 @bot.command()
 async def uwu(ctx, member: discord.Member, duration: str = None):
@@ -151,7 +179,7 @@ async def uwu(ctx, member: discord.Member, duration: str = None):
         return await ctx.send("⚠️ They're already in uwu mode.")
     expire = None
     if duration:
-        match = re.match(r'(\\d+)([smhd])', duration.lower())
+        match = re.match(r'(\d+)([smhd])', duration.lower())
         if match:
             val, unit = int(match.group(1)), match.group(2)
             delta = {'s': timedelta(seconds=val), 'm': timedelta(minutes=val),
@@ -159,6 +187,7 @@ async def uwu(ctx, member: discord.Member, duration: str = None):
             expire = datetime.utcnow() + delta[unit]
     uwu_targets[member.id] = expire
     await ctx.message.delete()
+    save_data()
 
 @bot.command()
 async def unuwu(ctx, member: discord.Member):
@@ -166,6 +195,7 @@ async def unuwu(ctx, member: discord.Member):
         return
     if member.id in uwu_targets:
         del uwu_targets[member.id]
+        save_data()
     await ctx.message.delete()
 
 # === Crown Logic ===
@@ -176,6 +206,7 @@ async def weekly_reset():
         await assign_sob_king()
         sob_counts.clear()
         globals()['last_champ'] = None
+        save_data()
 
 async def assign_sob_king():
     global last_champ
@@ -198,4 +229,3 @@ async def assign_sob_king():
 # === Launch Bot ===
 keep_alive()
 bot.run(os.environ['TOKEN'])
-'''
