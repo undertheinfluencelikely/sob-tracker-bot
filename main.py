@@ -103,19 +103,12 @@ async def on_message(message):
             save_data()
             return
         cursed = ultra_uwuify(message.content)
-        try:
-            await message.delete()
-            webhooks = await message.channel.webhooks()
-            webhook = next((wh for wh in webhooks if wh.user.id == bot.user.id), None)
-            if not webhook:
-                webhook = await message.channel.create_webhook(name="Discord System")
-            await webhook.send(
-                content=cursed,
-                username=message.author.display_name,
-                avatar_url=message.author.display_avatar.url
-            )
-        except Exception as e:
-            print(f"Webhook error: {e}")
+try:
+    await message.delete()
+    print(f"🗑️ Deleted message from {message.author.display_name} (uwu active)")
+except Exception as e:
+    print(f"❌ Failed to delete message: {e}")
+
 
 # === Commands ===
 @bot.command()
