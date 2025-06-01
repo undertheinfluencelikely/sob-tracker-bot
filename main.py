@@ -60,13 +60,13 @@ intents.reactions = True
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# === Uwu Transform ===
+# === Uwu Transform (still exists if you need to bring back mocking later) ===
 def ultra_uwuify(text):
     faces = ['👉👈', '>w<', '🥺', '😳', '💦', '💖', 'rawr~', 'uwu', 'X3', '~nyaa']
     text = re.sub(r'[rl]', 'w', text)
     text = re.sub(r'[RL]', 'W', text)
-    text = re.sub(r'n([aeiou])', r'ny\1', text)
-    text = re.sub(r'N([aeiouAEIOU])', r'Ny\1', text)
+    text = re.sub(r'n([aeiou])', r'ny\\1', text)
+    text = re.sub(r'N([aeiouAEIOU])', r'Ny\\1', text)
     stutter = lambda w: w[0] + '-' + w if random.random() < 0.2 else w
     text = ' '.join([stutter(word) for word in text.split()])
     emoji_spam = ' ' + ' '.join(random.sample(faces, 3))
@@ -102,13 +102,11 @@ async def on_message(message):
             del uwu_targets[message.author.id]
             save_data()
             return
-        cursed = ultra_uwuify(message.content)
-try:
-    await message.delete()
-    print(f"🗑️ Deleted message from {message.author.display_name} (uwu active)")
-except Exception as e:
-    print(f"❌ Failed to delete message: {e}")
-
+        try:
+            await message.delete()
+            print(f"🗑️ Deleted message from {message.author.display_name} (uwu active)")
+        except Exception as e:
+            print(f"❌ Failed to delete message: {e}")
 
 # === Commands ===
 @bot.command()
@@ -123,8 +121,8 @@ async def sobboard(ctx):
             name = user.name
         except:
             name = f"Unknown User ({user_id})"
-        leaderboard += f"{i}. {name}: {count} sobs\n"
-    await ctx.send(f"😭 **Sob Leaderboard**\n{leaderboard}")
+        leaderboard += f"{i}. {name}: {count} sobs\\n"
+    await ctx.send(f"😭 **Sob Leaderboard**\\n{leaderboard}")
 
 @bot.command()
 async def sobs(ctx, member: discord.Member = None):
@@ -171,7 +169,7 @@ async def uwu(ctx, member: discord.Member, duration: str = None):
         return await ctx.send("⚠️ They're already in uwu mode.")
     expire = None
     if duration:
-        match = re.match(r'(\d+)([smhd])', duration.lower())
+        match = re.match(r'(\\d+)([smhd])', duration.lower())
         if match:
             val, unit = int(match.group(1)), match.group(2)
             delta = {'s': timedelta(seconds=val), 'm': timedelta(minutes=val),
