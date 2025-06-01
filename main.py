@@ -9,7 +9,7 @@ import pytz
 import re
 import random
 
-# Flask server to keep Railway bot alive
+# Flask keepalive
 app = Flask('')
 
 @app.route('/')
@@ -23,15 +23,15 @@ def keep_alive():
     t = Thread(target=run)
     t.start()
 
-# Globals
-OWNER_ID = 1276728546840150016
+# === CONFIG ===
+OWNER_ID = 1276728546840150016  # Your Discord ID
 crown_role_id = None
 sob_counts = defaultdict(int)
 last_champ = None
 uwu_targets = {}
 eastern = pytz.timezone("America/New_York")
 
-# Intents and bot setup
+# === DISCORD SETUP ===
 intents = discord.Intents.default()
 intents.members = True
 intents.reactions = True
@@ -39,19 +39,19 @@ intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# UwUify Function
+# === UWU TRANSFORM ===
 def ultra_uwuify(text):
     faces = ['👉👈', '>w<', '🥺', '😳', '💦', '💖', 'rawr~', 'uwu', 'X3', '~nyaa']
     text = re.sub(r'[rl]', 'w', text)
     text = re.sub(r'[RL]', 'W', text)
-    text = re.sub(r'n([aeiou])', r'ny\1', text)
-    text = re.sub(r'N([aeiouAEIOU])', r'Ny\1', text)
+    text = re.sub(r'n([aeiou])', r'ny\\1', text)
+    text = re.sub(r'N([aeiouAEIOU])', r'Ny\\1', text)
     stutter = lambda w: w[0] + '-' + w if random.random() < 0.2 else w
     text = ' '.join([stutter(word) for word in text.split()])
     emoji_spam = ' ' + ' '.join(random.sample(faces, 3))
     return f"*{text}*{emoji_spam}"
 
-# Events
+# === EVENTS ===
 @bot.event
 async def on_ready():
     print(f"✅ Logged in as {bot.user}")
@@ -66,8 +66,7 @@ async def on_reaction_add(reaction, user):
         if author.id == user.id:
             print(f"⚠️ {user.name} tried to self-sob in #{reaction.message.channel.name}")
             return
-        if not author.bot:
-            sob_counts[author.id] += 1
+        sob_counts[author.id] += 1
 
 @bot.event
 async def on_message(message):
@@ -78,17 +77,34 @@ async def on_message(message):
     if message.author.id in uwu_targets:
         expire_time = uwu_targets[message.author.id]
         if expire_time and datetime.utcnow() > expire_time:
-            print(f"🕒 uwu expired for {message.author}")
             del uwu_targets[message.author.id]
             return
-        cursed = ultra_uwuify(message.content)
-        try:
-            await message.channel.send(cursed)
-            print(f"🧸 Mocked {message.author.display_name}")
-        except Exception as e:
-            print(f"❌ Error mocking {message.author}: {e}")
 
-# Commands
+        cursed = ultra_uwuify(message.content)
+
+        try:
+            await message.delete()
+
+            # Try to reuse webhook or create one
+            webhooks = await message.channel.webhooks()
+            webhook = None
+            for wh in webhooks:
+                if wh.user.id == bot.user.id:
+                    webhook = wh
+                    break
+            if not webhook:
+                webhook = await message.channel.create_webhook(name="uwuify")
+
+            await webhook.send(
+                content=cursed,
+                username=message.author.display_name,
+                avatar_url=message.author.display_avatar.url
+            )
+            print(f"👻 Mocked {message.author.display_name} via webhook")
+        except Exception as e:
+            print(f"❌ Webhook error: {e}")
+
+# === COMMANDS ===
 @bot.command()
 async def sobboard(ctx):
     sorted_counts = sorted(sob_counts.items(), key=lambda x: x[1], reverse=True)
@@ -129,7 +145,6 @@ async def sobreset(ctx):
         member = guild.get_member(last_champ)
         if role and member and role in member.roles:
             await member.remove_roles(role)
-            print(f"👑 Removed crown from {member.display_name}")
     sob_counts.clear()
     globals()['last_champ'] = None
     await ctx.send("😭 All sob counts have been reset and the crown role has been cleared.")
@@ -147,7 +162,7 @@ async def uwu(ctx, member: discord.Member, duration: str = None):
                      'h': timedelta(hours=val), 'd': timedelta(days=val)}
             expire = datetime.utcnow() + delta[unit]
     uwu_targets[member.id] = expire
-    print(f"🔒 Added {member.display_name} to uwu_targets until {expire}")
+    print(f"👿 Uwu mode ON for {member.display_name}")
     await ctx.message.delete()
 
 @bot.command()
@@ -156,15 +171,14 @@ async def unuwu(ctx, member: discord.Member):
         return
     if member.id in uwu_targets:
         del uwu_targets[member.id]
-        print(f"🔓 Removed {member.display_name} from uwu_targets")
+        print(f"🛑 Uwu mode OFF for {member.display_name}")
     await ctx.message.delete()
 
-# Weekly Reset Task
+# === CROWN ROTATION ===
 @tasks.loop(minutes=1)
 async def weekly_reset():
     now = datetime.now(eastern)
     if now.weekday() == 6 and now.hour == 0 and now.minute == 0:
-        print("🕛 Weekly sob reset running.")
         await assign_sob_king()
         sob_counts.clear()
         globals()['last_champ'] = None
@@ -173,28 +187,22 @@ async def assign_sob_king():
     global last_champ
     guild = bot.guilds[0]
     if not crown_role_id:
-        print("⚠️ Crown role not set.")
         return
     role = guild.get_role(crown_role_id)
     if not role:
-        print("⚠️ Crown role invalid or deleted.")
         return
     if not sob_counts:
-        print("🫥 No sobs this week.")
         return
     top_user_id = max(sob_counts, key=sob_counts.get)
     member = guild.get_member(top_user_id)
     if member:
         await member.add_roles(role)
-        print(f"👑 Gave Sob King to {member.display_name}")
     if last_champ and last_champ != top_user_id:
         old_member = guild.get_member(last_champ)
         if old_member:
             await old_member.remove_roles(role)
-            print(f"👑 Removed Sob King from {old_member.display_name}")
     last_champ = top_user_id
 
-# Launch
+# === STARTUP ===
 keep_alive()
-TOKEN = os.environ['TOKEN']
-bot.run(TOKEN)
+bot.run(os.environ['TOKEN'])
